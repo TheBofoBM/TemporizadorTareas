@@ -21,25 +21,70 @@ import androidx.compose.ui.unit.sp
 import com.example.temporizadorapp.ui.viewmodel.TimerViewModel
 import kotlinx.coroutines.delay
 
+// 1. Creamos un Enum para manejar los estados y sus colores visuales
+enum class SessionPhase(val title: String, val color: Color) {
+    WORK("Tiempo de Trabajo", Color(0xFF1D5DFF)), // Azul original
+    SHORT_BREAK("Descanso Corto", Color(0xFF00C853)), // Verde
+    LONG_BREAK("Descanso Largo", Color(0xFF7B1FA2)) // Morado
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
     val config by viewModel.currentConfig.collectAsState()
     val taskName by viewModel.taskName.collectAsState()
-    
-    var timeLeft by remember { mutableIntStateOf(config.workTime * 60) }
-    var isRunning by remember { mutableStateOf(false) }
+
+    // 2. Variables de estado para el motor de fases
+    var currentPhase by remember { mutableStateOf(SessionPhase.WORK) }
     var currentSet by remember { mutableIntStateOf(1) }
+    var isRunning by remember { mutableStateOf(false) }
     var isMetronomeOn by remember { mutableStateOf(false) }
 
-    // Timer logic
+    // 3. Calculamos el tiempo total dependiendo de la fase actual
+    val phaseTotalTime = remember(currentPhase, config) {
+        when (currentPhase) {
+            SessionPhase.WORK -> config.workTime * 60
+            SessionPhase.SHORT_BREAK -> config.breakTime * 60
+            SessionPhase.LONG_BREAK -> config.longBreakTime * 60
+        }
+    }
+
+    // El tiempo restante se reinicia automáticamente cuando cambia la fase
+    var timeLeft by remember(phaseTotalTime) { mutableIntStateOf(phaseTotalTime) }
+
+    // 4. Función central para avanzar de fase
+    fun advanceToNextPhase() {
+        when (currentPhase) {
+            SessionPhase.WORK -> {
+                if (currentSet < config.totalSets) {
+                    currentPhase = SessionPhase.SHORT_BREAK
+                } else {
+                    currentPhase = SessionPhase.LONG_BREAK
+                }
+            }
+            SessionPhase.SHORT_BREAK -> {
+                currentPhase = SessionPhase.WORK
+                currentSet++
+            }
+            SessionPhase.LONG_BREAK -> {
+                // Si termina el descanso largo, reiniciamos el ciclo
+                currentPhase = SessionPhase.WORK
+                currentSet = 1
+                isRunning = false // Detenemos al terminar todo el ciclo
+                return
+            }
+        }
+        // Si el auto-start está activado en la configuración, sigue corriendo
+        isRunning = config.autoStart
+    }
+
+    // 5. El bucle del reloj
     LaunchedEffect(isRunning, timeLeft) {
         if (isRunning && timeLeft > 0) {
             delay(1000L)
             timeLeft -= 1
-        } else if (timeLeft == 0) {
-            isRunning = false
-            // Logic for next phase (break/next set) could go here
+        } else if (isRunning && timeLeft == 0) {
+            advanceToNextPhase() // Cuando llega a 0, avanza solo
         }
     }
 
@@ -65,7 +110,7 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
             verticalArrangement = Arrangement.Center
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // Progress Circle
+                // Progress Circle Dinámico
                 Canvas(modifier = Modifier.size(280.dp)) {
                     drawArc(
                         color = Color(0xFFE0E0E0),
@@ -75,9 +120,9 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                         style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
                     )
                     drawArc(
-                        color = Color(0xFF1D5DFF),
+                        color = currentPhase.color, // Color dinámico
                         startAngle = -90f,
-                        sweepAngle = (timeLeft.toFloat() / (config.workTime * 60)) * 360f,
+                        sweepAngle = (timeLeft.toFloat() / phaseTotalTime) * 360f, // Cálculo dinámico
                         useCenter = false,
                         style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
                     )
@@ -91,7 +136,7 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                         color = Color(0xFF1A1C1E)
                     )
                     Text(
-                        "Tiempo de Trabajo",
+                        currentPhase.title, // Título dinámico
                         fontSize = 18.sp,
                         color = Color.Gray
                     )
@@ -100,14 +145,14 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // Pagination dots (simplified)
+            // Pagination dots (Indicador de series)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                repeat(4) { i ->
+                repeat(config.totalSets) { i ->
                     Box(
                         modifier = Modifier
                             .size(10.dp)
                             .background(
-                                color = if (i == 0) Color(0xFF1D5DFF) else Color(0xFFD1D1D1),
+                                color = if (i < currentSet) currentPhase.color else Color(0xFFD1D1D1),
                                 shape = CircleShape
                             )
                     )
@@ -123,7 +168,7 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                 Button(
                     onClick = { isRunning = !isRunning },
                     modifier = Modifier.height(56.dp).width(140.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1D5DFF)),
+                    colors = ButtonDefaults.buttonColors(containerColor = currentPhase.color), // Botón dinámico
                     shape = RoundedCornerShape(12.dp)
                 ) {
                     Icon(if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = null)
@@ -132,7 +177,7 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                 }
 
                 Surface(
-                    onClick = { timeLeft = config.workTime * 60; isRunning = false },
+                    onClick = { timeLeft = phaseTotalTime; isRunning = false }, // Reinicia la fase actual
                     modifier = Modifier.size(56.dp),
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
@@ -142,7 +187,7 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                 }
 
                 Surface(
-                    onClick = { /* Skip */ },
+                    onClick = { advanceToNextPhase() }, // AHORA SÍ FUNCIONA EL BOTÓN
                     modifier = Modifier.size(56.dp),
                     shape = RoundedCornerShape(12.dp),
                     color = Color.White,
@@ -153,11 +198,15 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("💪 Mantén tu concentración en la tarea", color = Color.Gray)
+                Text(
+                    text = if (currentPhase == SessionPhase.WORK) "💪 Mantén tu concentración en la tarea"
+                    else "☕ Aprovecha para estirarte y tomar agua",
+                    color = Color.Gray
+                )
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
 
             // Metronome Control
