@@ -4,12 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.activity.viewModels // ¡Importante!
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -22,21 +18,26 @@ import com.example.temporizadorapp.ui.theme.TemporizadorAppTheme
 import com.example.temporizadorapp.ui.viewmodel.TimerViewModel
 
 class MainActivity : ComponentActivity() {
+
+    private val timerViewModel: TimerViewModel by viewModels {
+        TimerViewModel.Factory((application as TimerApplication).repository)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             TemporizadorAppTheme {
-                MainNavigation()
+                // 2. Le pasamos el ViewModel ya creado a la navegación
+                MainNavigation(timerViewModel = timerViewModel)
             }
         }
     }
 }
 
 @Composable
-fun MainNavigation() {
+fun MainNavigation(timerViewModel: TimerViewModel) {
     val navController = rememberNavController()
-    val timerViewModel: TimerViewModel = viewModel()
 
     NavHost(navController = navController, startDestination = "timer") {
         composable("timer") {
