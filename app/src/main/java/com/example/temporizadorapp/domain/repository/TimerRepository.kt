@@ -14,4 +14,6 @@ interface TimerRepository {
     suspend fun getTemplateById(templateId: String): Template?
     suspend fun saveTemplate(template: Template)
     suspend fun deleteTemplate(template: Template)
+
+    suspend fun updateTemplate(template: Template)
 }

@@ -54,4 +54,8 @@ class TimerRepositoryImpl(
     override suspend fun deleteTemplate(template: Template) {
         templateDao.deleteTemplate(template.toEntity())
     }
+
+    override suspend fun updateTemplate(template: Template) {
+        templateDao.updateTemplate(template.toEntity()) // Convierte a Entity si es necesario
+    }
 }

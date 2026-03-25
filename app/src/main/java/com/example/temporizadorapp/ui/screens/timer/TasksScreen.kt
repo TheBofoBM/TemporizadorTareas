@@ -23,10 +23,39 @@ import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TasksScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
+fun TasksScreen(
+    viewModel: TimerViewModel,
+    onBack: () -> Unit,
+    onNavigateToTemplates: () -> Unit,
+    onNavigateToHistory: () -> Unit
+) {
     val tasks by viewModel.tasks.collectAsState()
     var selectedTab by remember { mutableIntStateOf(0) }
+
     val tabs = listOf("Todas", "Diarias", "Terminadas")
+
+    // ESTADO PARA EL DIÁLOGO
+    var showAddDialog by remember { mutableStateOf(false) }
+
+    // Mostrar el diálogo si el estado es true
+    if (showAddDialog) {
+        AddTaskDialog(
+            onDismiss = { showAddDialog = false },
+            onConfirm = { name ->
+                val newTask = Task(
+                    id = java.util.UUID.randomUUID().toString(),
+                    name = name,
+                    startTime = java.time.LocalTime.now(),
+                    // Usamos el día actual (1-7) para que aparezca hoy mismo
+                    scheduledDays = setOf(java.time.LocalDate.now().dayOfWeek.value),
+                    templateId = "manual", // Valor obligatorio para el constructor
+                    isCompleted = false,
+                    lastRunDate = null
+                )
+                viewModel.addTask(newTask)
+            }
+        )
+    }
 
     Scaffold(
         topBar = {
@@ -44,15 +73,13 @@ fun TasksScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                 },
                 actions = {
                     Row(modifier = Modifier.padding(end = 8.dp)) {
-                        TextButton(onClick = { /* Navigate to templates */ }) {
-                            Icon(Icons.Outlined.Book, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Plantillas", color = Color.Black)
+                        TextButton(onClick = onNavigateToTemplates) {
+                            Icon(Icons.Outlined.Book, contentDescription = null)
+                            Text("Plantillas")
                         }
-                        TextButton(onClick = { /* Navigate to history */ }) {
-                            Icon(Icons.Outlined.History, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Historial", color = Color.Black)
+                        TextButton(onClick = onNavigateToHistory) {
+                            Icon(Icons.Outlined.History, contentDescription = null)
+                            Text("Historial")
                         }
                     }
                 },
@@ -80,7 +107,7 @@ fun TasksScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                     ) {
                         Text("Mis Actividades", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                         Button(
-                            onClick = { /* New Task */ },
+                            onClick = { showAddDialog = true },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5722)),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -129,14 +156,28 @@ fun TasksScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                     if (tasks.isEmpty()) {
                         EmptyTasksView()
                     } else {
+                        // FILTRADO DINÁMICO
                         val filteredTasks = when (selectedTab) {
-                            1 -> tasks.filter { /* Logic for daily */ true }
-                            2 -> tasks.filter { it.isCompleted }
-                            else -> tasks
+                            1 -> { // Pestaña "Diarias"
+                                val today = java.time.LocalDate.now().dayOfWeek.value
+                                tasks.filter { it.scheduledDays.contains(today) && !it.isCompleted }
+                            }
+                            2 -> tasks.filter { it.isCompleted } // Pestaña "Terminadas"
+                            else -> tasks // Pestaña "Todas"
                         }
+
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(filteredTasks) { task ->
-                                TaskItem(task)
+                                TaskItem(
+                                    task = task,
+                                    onToggle = { isChecked ->
+                                        viewModel.updateTaskStatus(task.id, isChecked)
+                                    },
+                                    onPlay = {
+                                        viewModel.setCurrentTask(task)
+                                        onBack() // Volver al timer
+                                    }
+                                )
                             }
                         }
                     }
@@ -144,6 +185,29 @@ fun TasksScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+fun AddTaskDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var taskName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nueva Tarea") },
+        text = {
+            TextField(
+                value = taskName,
+                onValueChange = { taskName = it },
+                placeholder = { Text("Ej: Estudiar Kotlin") }
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(taskName); onDismiss() }) { Text("Guardar") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
 }
 
 @Composable
@@ -182,7 +246,7 @@ fun EmptyTasksView() {
 }
 
 @Composable
-fun TaskItem(task: Task) {
+fun TaskItem(task: Task, onToggle: (Boolean) -> Unit, onPlay: () -> Unit) {
     val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -193,12 +257,26 @@ fun TaskItem(task: Task) {
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Checkbox(checked = task.isCompleted, onCheckedChange = {})
+            Checkbox(
+                checked = task.isCompleted,
+                onCheckedChange = { onToggle(it) }
+            )
             Column(modifier = Modifier.weight(1f)) {
-                Text(task.name, fontWeight = FontWeight.SemiBold)
-                Text("${task.startTime.format(timeFormatter)} - ${task.scheduledDays.joinToString(", ")}", fontSize = 12.sp, color = Color.Gray)
+                Text(
+                    text = task.name,
+                    fontWeight = FontWeight.SemiBold,
+                    style = if (task.isCompleted) LocalTextStyle.current.copy(
+                        textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                        color = Color.Gray
+                    ) else LocalTextStyle.current
+                )
+                val daysMap = mapOf(1 to "Lun", 2 to "Mar", 3 to "Mié", 4 to "Jue", 5 to "Vie", 6 to "Sáb", 7 to "Dom")
+                val daysString = task.scheduledDays.map { daysMap[it] }.joinToString(", ")
+
+                // Luego en el Text de TaskItem:
+                Text("${task.startTime.format(timeFormatter)} - $daysString", fontSize = 12.sp, color = Color.Gray)
             }
-            IconButton(onClick = {}) {
+            IconButton(onClick = onPlay) {
                 Icon(Icons.Default.PlayArrow, contentDescription = "Iniciar", tint = Color(0xFF1D5DFF))
             }
         }

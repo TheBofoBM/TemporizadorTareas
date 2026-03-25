@@ -58,7 +58,9 @@ fun MainNavigation(timerViewModel: TimerViewModel) {
         composable("tasks") {
             TasksScreen(
                 viewModel = timerViewModel,
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                onNavigateToTemplates = { navController.navigate("templates") },
+                onNavigateToHistory = { navController.navigate("history") }
             )
         }
         composable("session") {

@@ -38,6 +38,22 @@ class TimerViewModel(private val repository: TimerRepository) : ViewModel() {
     private val _taskName = MutableStateFlow("")
     val taskName: StateFlow<String> = _taskName.asStateFlow()
 
+    fun deleteTemplate(template: Template) {
+        viewModelScope.launch {
+            repository.deleteTemplate(template) // Asegúrate de tener esto en tu repo
+        }
+    }
+
+    fun updateTemplate(template: Template) {
+        viewModelScope.launch {
+            repository.updateTemplate(template) // Asegúrate de tener esto en tu repo
+        }
+    }
+
+    fun useTemplate(template: Template) {
+        updateConfig(template.config)
+        updateTaskName(template.name) // Opcional: poner el nombre de la plantilla como tarea actual
+    }
 
     // --- 3. FUNCIONES DE ACTUALIZACIÓN ---
     fun updateTaskName(name: String) {
@@ -58,6 +74,27 @@ class TimerViewModel(private val repository: TimerRepository) : ViewModel() {
 
     fun addTemplate(template: Template) {
         viewModelScope.launch { repository.saveTemplate(template) }
+    }
+
+    // Función para actualizar el estado de completado (ya la tenías, asegúrate de que el repo la soporte)
+    fun updateTaskStatus(taskId: String, isCompleted: Boolean) {
+        viewModelScope.launch {
+            repository.updateTaskStatus(taskId, isCompleted)
+        }
+    }
+
+    // Función para eliminar tareas (opcional pero recomendada)
+    fun deleteTask(task: Task) {
+        viewModelScope.launch {
+            // Asumiendo que tu repository tiene deleteTasks
+            repository.deleteTask(task)
+        }
+    }
+
+    // Función para cuando el usuario pulsa "Play" en una tarea específica
+    fun setCurrentTask(task: Task) {
+        _taskName.value = task.name
+        // Aquí podrías ajustar la configuración del temporizador según la tarea si fuera necesario
     }
 
     // --- 4. CONFIGURACIÓN DEL VIEWMODEL ---

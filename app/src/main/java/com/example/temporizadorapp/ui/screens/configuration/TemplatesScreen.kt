@@ -30,6 +30,9 @@ fun TemplatesScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
     val templates by viewModel.templates.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
+    // Estado para saber qué plantilla estamos editando
+    var templateToEdit by remember { mutableStateOf<Template?>(null) }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -47,7 +50,7 @@ fun TemplatesScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Nueva Plantilla")
+                        Text("Nueva")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFFFDF7FF))
@@ -55,30 +58,28 @@ fun TemplatesScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
         },
         containerColor = Color(0xFFFDF7FF)
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(16.dp)
-        ) {
-            Text(
-                "Crea y gestiona configuraciones predefinidas para tus sesiones de estudio",
-                color = Color.Gray,
-                fontSize = 14.sp
-            )
+        Column(modifier = Modifier.padding(padding).fillMaxSize().padding(16.dp)) {
+            Text("Gestiona tus configuraciones predefinidas", color = Color.Gray, fontSize = 14.sp)
             Spacer(modifier = Modifier.height(16.dp))
 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(templates) { template ->
-                    TemplateItem(template, onUse = {
-                        viewModel.updateConfig(template.config)
-                        onBack()
-                    })
+                    TemplateItem(
+                        template = template,
+                        onUse = {
+                            viewModel.updateConfig(template.config)
+                            viewModel.updateTaskName(template.name)
+                            onBack()
+                        },
+                        onEdit = { templateToEdit = template },
+                        onDelete = { viewModel.deleteTemplate(template) } // Asegúrate de tener esta función en tu VM
+                    )
                 }
             }
         }
     }
 
+    // Diálogo para Crear
     if (showAddDialog) {
         AddTemplateDialog(
             onDismiss = { showAddDialog = false },
@@ -88,10 +89,28 @@ fun TemplatesScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
             }
         )
     }
+
+    // Diálogo para Editar
+    templateToEdit?.let { template ->
+        AddTemplateDialog(
+            initialTemplate = template,
+            onDismiss = { templateToEdit = null },
+            onConfirm = { name, desc, config ->
+                // Actualizamos la plantilla existente manteniendo su ID
+                viewModel.addTemplate(template.copy(name = name, description = desc, config = config))
+                templateToEdit = null
+            }
+        )
+    }
 }
 
 @Composable
-fun TemplateItem(template: Template, onUse: () -> Unit) {
+fun TemplateItem(
+    template: Template,
+    onUse: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -106,8 +125,12 @@ fun TemplateItem(template: Template, onUse: () -> Unit) {
             ) {
                 Text(template.name, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 Row {
-                    IconButton(onClick = { /* Edit */ }) { Icon(Icons.Outlined.Edit, contentDescription = null, tint = Color.Gray) }
-                    IconButton(onClick = { /* Delete */ }) { Icon(Icons.Outlined.Delete, contentDescription = null, tint = Color.Red) }
+                    IconButton(onClick = onEdit) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "Editar", tint = Color.Gray)
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Outlined.Delete, contentDescription = "Eliminar", tint = Color(0xFFE53935))
+                    }
                 }
             }
             
@@ -119,7 +142,7 @@ fun TemplateItem(template: Template, onUse: () -> Unit) {
 
             Button(
                 onClick = onUse,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B1FA2)),
                 shape = RoundedCornerShape(8.dp)
             ) {
@@ -150,7 +173,11 @@ fun TemplateTag(icon: ImageVector, text: String) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTemplateDialog(onDismiss: () -> Unit, onConfirm: (String, String, SessionConfig) -> Unit) {
+fun AddTemplateDialog(
+    initialTemplate: Template? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (String, String, SessionConfig) -> Unit
+) {
     var name by remember { mutableStateOf("") }
     var desc by remember { mutableStateOf("") }
     var workTime by remember { mutableStateOf("25") }
@@ -233,7 +260,7 @@ fun AddTemplateDialog(onDismiss: () -> Unit, onConfirm: (String, String, Session
                         },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7B1FA2))
-                    ) { Text("Crear Plantilla") }
+                    ) { Text(if (initialTemplate == null) "Crear" else "Guardar Cambios") }
                 }
             }
         }
