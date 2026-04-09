@@ -40,6 +40,9 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
     var isRunning by remember { mutableStateOf(false) }
     var isMetronomeOn by remember { mutableStateOf(false) }
 
+    // Dentro de SessionScreen
+    var showFinishedDialog by remember { mutableStateOf(false) }
+
     // 3. Calculamos el tiempo total dependiendo de la fase actual
     val phaseTotalTime = remember(currentPhase, config) {
         when (currentPhase) {
@@ -67,24 +70,42 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                 currentSet++
             }
             SessionPhase.LONG_BREAK -> {
-                // Si termina el descanso largo, reiniciamos el ciclo
-                currentPhase = SessionPhase.WORK
-                currentSet = 1
-                isRunning = false // Detenemos al terminar todo el ciclo
+                // --- FINALIZACIÓN DE SESIÓN ---
+                isRunning = false
+                viewModel.toggleTaskCompletion(viewModel.taskName.value, true) // Guardamos en DB
+                showFinishedDialog = true // Mostramos el éxito al usuario
                 return
             }
         }
-        // Si el auto-start está activado en la configuración, sigue corriendo
+        timeLeft = phaseTotalTime
         isRunning = config.autoStart
     }
 
-    // 5. El bucle del reloj
-    LaunchedEffect(isRunning, timeLeft) {
-        if (isRunning && timeLeft > 0) {
-            delay(1000L)
-            timeLeft -= 1
-        } else if (isRunning && timeLeft == 0) {
-            advanceToNextPhase() // Cuando llega a 0, avanza solo
+    // Efecto para el sonido del metrónomo
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(isRunning) {
+        if (isRunning) {
+            while (timeLeft > 0) {
+                // 1. Sonar metrónomo si está activo (Fuego y olvido)
+                if (isMetronomeOn) {
+                    val mp = android.media.MediaPlayer.create(context, com.example.temporizadorapp.R.raw.metronomo)
+                    mp?.setVolume(0.3f, 0.3f)
+                    mp?.start()
+                    mp?.setOnCompletionListener { it.release() }
+                }
+
+                // 2. Esperar el segundo exacto
+                delay(1000L)
+
+                // 3. Restar el tiempo
+                timeLeft -= 1
+            }
+
+            // 4. Al terminar el ciclo
+            if (timeLeft == 0) {
+                advanceToNextPhase()
+            }
         }
     }
 
@@ -217,14 +238,62 @@ fun SessionScreen(viewModel: TimerViewModel, onBack: () -> Unit) {
                 modifier = Modifier.padding(8.dp)
             ) {
                 Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.MusicNote, contentDescription = null, tint = if (isMetronomeOn) Color(0xFF1D5DFF) else Color.Gray)
+                    Icon(
+                        imageVector = if (isMetronomeOn) Icons.Filled.MusicNote else Icons.Outlined.MusicNote,
+                        contentDescription = null,
+                        tint = if (isMetronomeOn) Color(0xFF1D5DFF) else Color.Gray
+                    )
                     Text(
-                        if (isMetronomeOn) "Metrónomo Activo (Pausar)" else "Activar Metrónomo",
+                        text = if (isMetronomeOn) "Metrónomo Activo" else "Activar Metrónomo",
                         modifier = Modifier.padding(start = 4.dp),
-                        color = if (isMetronomeOn) Color(0xFF1D5DFF) else Color.Gray
+                        color = if (isMetronomeOn) Color(0xFF1D5DFF) else Color.Gray,
+                        fontWeight = if (isMetronomeOn) FontWeight.Bold else FontWeight.Normal
                     )
                 }
             }
+        }
+
+        if (showFinishedDialog) {
+            AlertDialog(
+                onDismissRequest = { /* No permitir cerrar fuera para obligar a confirmar */ },
+                icon = {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = null,
+                        tint = Color(0xFF4CAF50),
+                        modifier = Modifier.size(48.dp)
+                    )
+                },
+                title = {
+                    Text(text = "¡Misión Cumplida!", fontWeight = FontWeight.Bold)
+                },
+                text = {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("Has completado todas las series de:")
+                        Text(
+                            text = taskName.ifEmpty { "Sesión de estudio" },
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1D5DFF)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("La tarea ha sido movida al historial.", fontSize = 14.sp, color = Color.Gray)
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            showFinishedDialog = false
+                            onBack() // Regresamos a TasksScreen
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1D5DFF)),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Volver al Inicio")
+                    }
+                },
+                shape = RoundedCornerShape(16.dp),
+                containerColor = Color.White
+            )
         }
     }
 }

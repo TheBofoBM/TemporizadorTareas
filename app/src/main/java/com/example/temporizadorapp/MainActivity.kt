@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels // ¡Importante!
+import androidx.activity.viewModels
 import androidx.compose.runtime.Composable
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -20,7 +20,7 @@ import com.example.temporizadorapp.ui.viewmodel.TimerViewModel
 class MainActivity : ComponentActivity() {
 
     private val timerViewModel: TimerViewModel by viewModels {
-        TimerViewModel.Factory((application as TimerApplication).repository)
+        TimerViewModel.Factory(application, (application as TimerApplication).repository)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,7 +28,6 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             TemporizadorAppTheme {
-                // 2. Le pasamos el ViewModel ya creado a la navegación
                 MainNavigation(timerViewModel = timerViewModel)
             }
         }
@@ -71,6 +70,7 @@ fun MainNavigation(timerViewModel: TimerViewModel) {
         }
         composable("history") {
             HistoryScreen(
+                viewModel = timerViewModel,
                 onBack = { navController.popBackStack() }
             )
         }

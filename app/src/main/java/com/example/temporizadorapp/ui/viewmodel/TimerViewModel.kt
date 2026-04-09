@@ -1,5 +1,7 @@
 package com.example.temporizadorapp.ui.viewmodel
 
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -7,6 +9,7 @@ import com.example.temporizadorapp.domain.model.SessionConfig
 import com.example.temporizadorapp.domain.model.Task
 import com.example.temporizadorapp.domain.model.Template
 import com.example.temporizadorapp.domain.repository.TimerRepository
+import com.example.temporizadorapp.util.AlarmScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +17,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-class TimerViewModel(private val repository: TimerRepository) : ViewModel() {
+class TimerViewModel(
+    application: Application,
+    private val repository: TimerRepository
+) : AndroidViewModel(application) {
+
+    private val alarmScheduler = AlarmScheduler(application)
 
     // --- 1. MEMORIA DE LA BASE DE DATOS ---
     val tasks: StateFlow<List<Task>> = repository.getAllTasks()
@@ -38,21 +46,24 @@ class TimerViewModel(private val repository: TimerRepository) : ViewModel() {
     private val _taskName = MutableStateFlow("")
     val taskName: StateFlow<String> = _taskName.asStateFlow()
 
+    private val _currentTaskId = MutableStateFlow<String?>(null)
+    val currentTaskId: StateFlow<String?> = _currentTaskId.asStateFlow()
+
     fun deleteTemplate(template: Template) {
         viewModelScope.launch {
-            repository.deleteTemplate(template) // Asegúrate de tener esto en tu repo
+            repository.deleteTemplate(template)
         }
     }
 
     fun updateTemplate(template: Template) {
         viewModelScope.launch {
-            repository.updateTemplate(template) // Asegúrate de tener esto en tu repo
+            repository.updateTemplate(template)
         }
     }
 
     fun useTemplate(template: Template) {
         updateConfig(template.config)
-        updateTaskName(template.name) // Opcional: poner el nombre de la plantilla como tarea actual
+        updateTaskName(template.name)
     }
 
     // --- 3. FUNCIONES DE ACTUALIZACIÓN ---
@@ -65,46 +76,72 @@ class TimerViewModel(private val repository: TimerRepository) : ViewModel() {
     }
 
     fun addTask(task: Task) {
-        viewModelScope.launch { repository.saveTask(task) }
+        viewModelScope.launch { 
+            repository.saveTask(task)
+            // Programar alarma para la tarea
+            alarmScheduler.schedule(task)
+        }
     }
 
     fun toggleTaskCompletion(taskId: String, isCompleted: Boolean) {
-        viewModelScope.launch { repository.updateTaskStatus(taskId, isCompleted) }
+        viewModelScope.launch { 
+            repository.updateTaskStatus(taskId, isCompleted)
+        }
     }
 
     fun addTemplate(template: Template) {
         viewModelScope.launch { repository.saveTemplate(template) }
     }
 
-    // Función para actualizar el estado de completado (ya la tenías, asegúrate de que el repo la soporte)
     fun updateTaskStatus(taskId: String, isCompleted: Boolean) {
         viewModelScope.launch {
             repository.updateTaskStatus(taskId, isCompleted)
         }
     }
 
-    // Función para eliminar tareas (opcional pero recomendada)
     fun deleteTask(task: Task) {
         viewModelScope.launch {
-            // Asumiendo que tu repository tiene deleteTasks
             repository.deleteTask(task)
+            alarmScheduler.cancel(task)
         }
     }
 
-    // Función para cuando el usuario pulsa "Play" en una tarea específica
     fun setCurrentTask(task: Task) {
         _taskName.value = task.name
-        // Aquí podrías ajustar la configuración del temporizador según la tarea si fuera necesario
+        _currentTaskId.value = task.id
+    }
+
+    fun completeTask(taskId: String) {
+        viewModelScope.launch {
+            val today = java.time.LocalDate.now().toString()
+            // Asumiendo que actualizamos el repo para aceptar la fecha
+            // repository.updateTaskStatus(taskId, true, today)
+            repository.updateTaskStatus(taskId, true)
+        }
     }
 
     // --- 4. CONFIGURACIÓN DEL VIEWMODEL ---
-    class Factory(private val repository: TimerRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val application: Application,
+        private val repository: TimerRepository
+    ) : ViewModelProvider.Factory {
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(TimerViewModel::class.java)) {
                 @Suppress("UNCHECKED_CAST")
-                return TimerViewModel(repository) as T
+                return TimerViewModel(application, repository) as T
             }
             throw IllegalArgumentException("Unknown ViewModel class")
+        }
+    }
+
+    fun completeCurrentTask() {
+        viewModelScope.launch {
+            val currentTasks = tasks.value
+            val taskToComplete = currentTasks.find { it.name == _taskName.value && !it.isCompleted }
+
+            taskToComplete?.let {
+                repository.updateTaskStatus(it.id, true)
+            }
         }
     }
 }

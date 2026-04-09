@@ -10,5 +10,6 @@ data class TaskEntity(
     val scheduledTime: String,
     val scheduledDays: String,
     val templateId: Int?,
-    val isCompleted: Boolean = false
+    val isCompleted: Boolean = false,
+    val lastRunDate: String? = null
 )
